@@ -20,16 +20,16 @@
 #include <time.h>
 #include <pthread.h>
 #include <math.h>
+#include <assert.h>
 
 #include "gd.h"
 
 #define MAX_DISTANCE 4.0
 #define NUM_DIMENSIONS 8
 
-#define NUM_THREADS 8
+#define NUM_THREADS 1
 #define true  1
 #define false 0
-	
 	
 typedef int bb_pixel;
 typedef int bb_bool;
@@ -54,8 +54,8 @@ void * coMandelbrotPopulator(void *);
 bb_bool** coMandelbrotSet(int, int);
 bb_pixel*** buddhaArray(int);
 void * malloc_p(unsigned int);
-int isMandelbrot(int, int, long double, long double, float,float);
-void updateBuddhabrot(int cutoff, int n, int resolution,  double x,  double y, float cx, float cy, bb_pixel *** buddha_arr);
+int isMandelbrot(int, int, long double, long double, double,double);
+void updateBuddhabrot(int cutoff, int n, int resolution,  double x,  double y, double cx, double cy, bb_pixel *** buddha_arr);
 
 int 
 main (int argc, char * const argv[]) {
@@ -101,7 +101,6 @@ int generateBuddhabrot(int resolution, int cutoff) {
 	/* initialize a mutex to its default value */ 
 	ret = pthread_mutex_init(&mp, NULL);
 
-
 	int t;
 	int rc;
 	for(t = 0; t< NUM_THREADS; t++) {
@@ -133,7 +132,6 @@ int generateBuddhabrot(int resolution, int cutoff) {
 		printf("Main: completed join with thread %d having a status of %ld\n", t, (long)status);
 	}
 
-
 	// populate pixel arrays
 	int dim;
 	for(dim = 0; dim < NUM_DIMENSIONS; dim ++) {
@@ -150,7 +148,7 @@ int generateBuddhabrot(int resolution, int cutoff) {
 
 		for(i = 0; i < 3 * resolution; i ++) {
 			for(j = 0; j < 2 * resolution; j ++) {
-				int value = 255 * sqrt((float) buddha_arr_flat[j][i] / (float) maxThreshold);
+				int value = 255 * sqrt((double) buddha_arr_flat[j][i] / (double) maxThreshold);
 				int color = gdTrueColor(value, value, value);
 				gdImageSetPixel(im_out, j, i, color);
 			}
@@ -158,14 +156,16 @@ int generateBuddhabrot(int resolution, int cutoff) {
 
 		// write the image
 		char filename[1024];
-		sprintf(filename, "out/buddha.%d.png", dim);
+		sprintf(filename, "buddha.%d.png", dim);
 		out = fopen (filename, "wb");
+		assert(out);
 		gdImagePng (im_out, out);
 		fclose (out);
 
 		// write the data
-		sprintf(filename, "out/buddha.%d.data", dim);
+		sprintf(filename, "buddha.%d.data", dim);
 		out = fopen (filename, "wb");
+		assert(out);
 		for(i = 0; i < 2 * resolution; i ++) {
 			fwrite(buddha_arr_flat[i], sizeof(bb_pixel), 3 * resolution, out);
 		}
@@ -201,7 +201,7 @@ void * generateBuddhaSegment(void * data) {
 	bb_pixel *** buddha_arr = this_data->buddha_arr;
 	bb_bool ** co_set = this_data->co_set;
 
-	float cx, cy;
+	double cx, cy;
 	int i, j;
 	int start_row, end_row;
 	long hits = 0;
@@ -216,8 +216,9 @@ void * generateBuddhaSegment(void * data) {
 	for(i = 0; i < 3 * resolution; i ++) 
 		for(j = start_row; j < end_row; j ++) {
 			if(!co_set[j][i]) {
-				cy = (float) (j - resolution) / (float) resolution;
-				cx = (float) (i - 2*resolution) / (float) resolution;
+				/* normalize */
+				cy = (double) (j - resolution) / (double) resolution;
+				cx = (double) (i - 2*resolution) / (double) resolution;
 				updateBuddhabrot(cutoff, 0, resolution, 0.0, 0.0, cx, cy, buddha_arr);
 				hits += 1;
 
@@ -319,12 +320,12 @@ void * coMandelbrotPopulator(void * data) {
 	printf("Starting comandelbrot thread number %d with row %d -> %d\n", this_data->thread_id, start_row, end_row);
 
 	long i,j;
-	float x,y;
+	double x,y;
 
 	for(i = start_row; i < end_row; i ++) 
 		for(j = 0; j < 3 * resolution; j ++) {
-			y = (float) (i - resolution) / (float) resolution;
-			x = (float) (j - 2*resolution) / (float) resolution;
+			y = (double) (i - resolution) / (double) resolution;
+			x = (double) (j - 2*resolution) / (double) resolution;
 
 			//pthread_mutex_lock(mp);
 			co_set[i][j] = isMandelbrot(cutoff,0,0.0,0.0,x,y);
@@ -368,7 +369,7 @@ bb_pixel*** buddhaArray(int resolution) {
 }
 
 // Is cx + i * cy in the mandelbrot set?
-int isMandelbrot(int cutoff, int n, long double x, long double y, float cx, float cy) {
+int isMandelbrot(int cutoff, int n, long double x, long double y, double cx, double cy) {
 
 	long double a = (cx - 0.25)*(cx-0.25) + cy*cy;
 	long double p = sqrt(a);
@@ -396,7 +397,9 @@ int isMandelbrot(int cutoff, int n, long double x, long double y, float cx, floa
 }
 
 // Buddhabrot.. Updates buddhabrot array
-void updateBuddhabrot(int cutoff, int n, int resolution,  double x,  double y, float cx, float cy, bb_pixel *** buddha_arr) {
+void updateBuddhabrot(int cutoff, int n, int resolution, double x, double y, double cx, 
+	double cy, bb_pixel *** buddha_arr) {
+	
 	double nx, ny;
 	int dim;
 
@@ -411,17 +414,18 @@ void updateBuddhabrot(int cutoff, int n, int resolution,  double x,  double y, f
 
 		for(dim = 0; dim < NUM_DIMENSIONS; dim ++) {
 			if(0 < xcoo && xcoo < 3 * resolution &&
-					0 < ycoo && ycoo < 2 * resolution &&
-					(dim == 0 || (n < cutoff / (1 << (dim))))) {
-				buddha_arr[dim][ycoo][xcoo] += 1;
+				0 < ycoo && ycoo < 2 * resolution &&
+				(dim == 0 || (n < cutoff >> (dim)))) {
+
+				buddha_arr[dim][ycoo][xcoo] ++;
+
 			}
 		}
 
-		n += 1;
+		n ++;
 		x = nx;
 		y = ny;
 	}
-
 }
 
 // Just a protection built around malloc..
