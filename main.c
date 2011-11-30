@@ -25,11 +25,13 @@
 #include "gd.h"
 
 #define MAX_DISTANCE 4.0
-#define NUM_DIMENSIONS 8
+#define NUM_DIMENSIONS 1
 
 #define NUM_THREADS 1
 #define true  1
 #define false 0
+
+#define double float
 	
 typedef int bb_pixel;
 typedef int bb_bool;
@@ -46,7 +48,6 @@ struct thread_data {
 struct thread_data thread_data_array[NUM_THREADS];
 struct thread_data thread_data_comandel_array[NUM_THREADS];
 
-
 int generateBuddhabrot(int, int);
 void * generateBuddhaSegment(void *);
 void * coMandelbrotPopulator(void *);
@@ -54,7 +55,7 @@ void * coMandelbrotPopulator(void *);
 bb_bool** coMandelbrotSet(int, int);
 bb_pixel*** buddhaArray(int);
 void * malloc_p(unsigned int);
-int isMandelbrot(int, int, long double, long double, double,double);
+int isMandelbrot(int, int, double, double, double,double);
 void updateBuddhabrot(int cutoff, int n, int resolution,  double x,  double y, double cx, double cy, bb_pixel *** buddha_arr);
 
 int 
@@ -95,11 +96,10 @@ int generateBuddhabrot(int resolution, int cutoff) {
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
 	pthread_mutex_t mp = PTHREAD_MUTEX_INITIALIZER; 
-	pthread_mutexattr_t mattr; 
-	int ret; 
+	//pthread_mutexattr_t mattr; 
 
 	/* initialize a mutex to its default value */ 
-	ret = pthread_mutex_init(&mp, NULL);
+	pthread_mutex_init(&mp, NULL);
 
 	int t;
 	int rc;
@@ -194,7 +194,7 @@ void * generateBuddhaSegment(void * data) {
 	struct thread_data *this_data;
 
 	this_data = (struct thread_data*) data;
-	pthread_mutex_t * mp = this_data->mp;
+	//pthread_mutex_t * mp = this_data->mp;
 
 	int resolution = this_data->resolution;
 	int cutoff = this_data->cutoff;
@@ -257,11 +257,10 @@ bb_bool** coMandelbrotSet(int resolution, int cutoff) {
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
 	pthread_mutex_t mp = PTHREAD_MUTEX_INITIALIZER; 
-	pthread_mutexattr_t mattr; 
-	int ret; 
+	//pthread_mutexattr_t mattr; 
 
 	/* initialize a mutex to its default value */ 
-	ret = pthread_mutex_init(&mp, NULL);
+	pthread_mutex_init(&mp, NULL);
 
 	int t;
 	int rc;
@@ -308,7 +307,7 @@ void * coMandelbrotPopulator(void * data) {
 
 	int resolution = this_data->resolution;
 	int cutoff = this_data->cutoff;
-	pthread_mutex_t * mp = this_data->mp;
+	//pthread_mutex_t * mp = this_data->mp;
 
 	bb_bool ** co_set = this_data->co_set;
 
@@ -369,19 +368,19 @@ bb_pixel*** buddhaArray(int resolution) {
 }
 
 // Is cx + i * cy in the mandelbrot set?
-int isMandelbrot(int cutoff, int n, long double x, long double y, double cx, double cy) {
+int isMandelbrot(int cutoff, int n, double x, double y, double cx, double cy) {
 
-	long double a = (cx - 0.25)*(cx-0.25) + cy*cy;
-	long double p = sqrt(a);
+	double a = (cx - 0.25)*(cx-0.25) + cy*cy;
+	double p = sqrt(a);
 	if(cx < p - 2*p*p + 0.25 || (cx + 1) * (cx + 1) + cy * cy < 1.0 / 16.0) {
 		return true;
 	}
 
-	long double nx, ny, abs;
+	double nx, ny, abs;
 	while(n < cutoff) {
-		nx = (long double) x*x - y*y + cx;
-		ny = (long double) 2*x*y + cy;
-		abs = (long double) nx*nx + ny*ny;
+		nx = (double) x*x - y*y + cx;
+		ny = (double) 2*x*y + cy;
+		abs = (double) nx*nx + ny*ny;
 
 		if(abs >= MAX_DISTANCE)
 			return false;

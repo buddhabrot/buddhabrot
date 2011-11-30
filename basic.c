@@ -1,5 +1,5 @@
 /*
- * Memoized algorithm for buddhabrot creation
+ * Basic algorithm for buddhabrot creation
  *
  * @author: Maarten Mortier 2011
  */
@@ -258,7 +258,6 @@ void * monitor_loop(void* data) {
 void start_monitor_thread() {
 	
 	int error;
-
 	pthread_attr_t attr;
 
 	printf("%s\n", __FUNCTION__);
