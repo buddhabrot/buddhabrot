@@ -1,0 +1,6 @@
+Buddhabrot generator.
+Usage:
+buddhabrot size depth filepath [mandelbrot_factor]
+
+Calculates a buddhabrot fractal with size {size} in pixels, with iterative depth {depth}, and outputs the resulting image files (for the mandelbrot and the buddhabrot) to {filepath}.
+Optionally, you can specify a factor {mandelbrot_factor}, which will multiply the iterative depth for calculating the mandelbrot fractal. This way you can have a more detailed mandelbrot to use as a basis to calculate your buddhabrot (this is advised, since mandelbrot creation is pretty cheap).
