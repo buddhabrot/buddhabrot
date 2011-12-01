@@ -1,5 +1,7 @@
 /*
- * Basic algorithm for buddhabrot creation
+ * Basic algorithm for buddhabrot creation.
+ *
+ * LICENSE: Use as you see fit, but give credit where you think it's due.
  *
  * @author: Maarten Mortier 2011
  */
@@ -11,9 +13,11 @@
 #include <math.h>
 #include <time.h>
 #include <pthread.h>
- 
-#include "gd.h" 
+#include <gd.h> 
 
+#include "cpu_info.h"
+
+#define MULTITHREADED 1
 /* malloc helper */
 void * malloc_p(unsigned int);
 
@@ -44,6 +48,16 @@ long long max_calculations;
 /* Monitor thread */
 pthread_t monitor;
 int finished;
+
+/* Multi-threading */
+int num_threads;
+struct thread_data {
+	int id;
+	int startpoint; /* Index in coordinate space where thread starts its work. */
+};
+int points_per_thread;
+struct thread_data* thread_data_set;
+pthread_t *threads;
 
 void make_map() {
 	/* Makes a normalized map (x = -2.0 .. 1.0, y = -1.0 .. 1.0) */
@@ -131,21 +145,9 @@ void process_buddhabrot(double x, double y) {
 	}
 }
 
-void make_buddhabrot() {
+void post_processing() {
+
 	int row, col;
-	double x, y;
-
-	for(col=0; col<width; col++) {
-		for(row=0; row<height; row++) {
-			if(mandelbrot[col][row])
-				continue;
-
-			x = map[col][row].x;
-			y = map[col][row].y;
-
-			process_buddhabrot(x, y);
-		}
-	}
 
 	/* Calculate amplitude. */
 	for(col=0; col<width; col++) {
@@ -157,7 +159,42 @@ void make_buddhabrot() {
 
 }
 
+void* make_buddhabrot(void * data) {
+	int row, col;
+	double x, y;
+	int points_processed = 0;
+	int startpoint;
+	int id;
+
+	struct thread_data* thread_data = (struct thread_data*) data;
+
+	id = thread_data->id;
+	startpoint = thread_data->startpoint;
+
+	printf("Starting thread %d at index %d.\n", id, startpoint);
+
+	for(col=0; col<width; col++) {
+		for(row=0; row<height; row++) {
+			if(mandelbrot[col][row] || (col < startpoint%width && row<startpoint/width))
+				continue;
+
+			x = map[col][row].x;
+			y = map[col][row].y;
+
+			process_buddhabrot(x, y);
+			points_processed ++;
+
+			if(points_processed > points_per_thread && id<(num_threads-1)) /* Let the last thread finish up. */
+				return NULL;
+			
+		}
+	}
+
+	return NULL;
+}
+
 void write_mandelbrot() {
+
 	int row, col;
 	gdImagePtr image;
 	FILE* file;
@@ -250,6 +287,7 @@ void * monitor_loop(void* data) {
 		sleep(1);
 		completeness = 100 * calculations / max_calculations;
 		printf("%.2d%% complete..\n", completeness);
+		
 	}
 
 	return NULL;
@@ -258,24 +296,30 @@ void * monitor_loop(void* data) {
 void start_monitor_thread() {
 	
 	int error;
+	void* status;
 	pthread_attr_t attr;
 
 	printf("%s\n", __FUNCTION__);
 	
 	pthread_attr_init(&attr);
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
 	error = pthread_create(&monitor, &attr, monitor_loop, (void*) NULL);
 	assert(!error);
 
 	pthread_attr_destroy(&attr);
+	pthread_join(monitor, &status);
+	assert(!status);
 
 }
 
-void make_time_estimate() {
+/* Schedules the calculation for the different threads. */
+void make_schedule() {
+
 	int col, row;
 	int anti_mandelbrot_size = 0;
 
+	/* Determine anti-mandelbrot (points not in mandelbrot) set size. */
 	for(col=0; col<width; col++) {
 		for(row=0; row<height; row++) {
 			if(!mandelbrot[col][row])
@@ -283,7 +327,60 @@ void make_time_estimate() {
 		}
 	}
 
+	num_threads = 1 + get_num_cores(); /* Thread per core. */
+	if(num_threads > 1 && MULTITHREADED) {
+		points_per_thread = anti_mandelbrot_size / num_threads;
+		thread_data_set = (struct thread_data*) 
+			malloc_p(sizeof(struct thread_data) * num_threads);
+		threads =(pthread_t*) malloc(sizeof(pthread_t) * num_threads);
+
+		/* Slice the mandelbrot point area for each thread. */
+		int points = 0;
+		int thread_no = 0;
+		for(col=0; col<width; col++) {
+			for(row=0; row<height; row++) {
+				if(points%points_per_thread == 0) {
+					if(thread_no < num_threads) {
+						thread_data_set[thread_no].id = thread_no;
+						thread_data_set[thread_no].startpoint = col + row*width;
+						thread_no++;
+					}
+				}
+				points ++;
+			}
+		}
+	}
+
 	max_calculations = anti_mandelbrot_size * depth;
+}
+
+void create_buddhabrot_thread(int thread_no) {
+	int error;
+	pthread_attr_t attr;
+
+	assert(thread_no < num_threads);
+	printf("%s\n", __FUNCTION__);
+	
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	error = pthread_create(&threads[thread_no], &attr, make_buddhabrot, 
+		(void*) &thread_data_set[thread_no]);
+	assert(!error);
+
+	pthread_attr_destroy(&attr);	
+}
+
+void join_all_threads() {
+
+	int thread_no;
+	int error;
+	void* status;
+
+	for(thread_no=0; thread_no<num_threads; thread_no++) {
+		error = pthread_join(threads[thread_no], &status);
+		assert(error);
+	}
 }
 
 int main(int argc, char* argv[]) {
@@ -305,7 +402,6 @@ int main(int argc, char* argv[]) {
 	width = 3 * size;
 	height = 2 * size;
 
-
 	finished = 0;
 
 	allocate_sets();
@@ -316,15 +412,30 @@ int main(int argc, char* argv[]) {
 	write_mandelbrot();
 
 	/* Based on size of mandelbrot: */
-	make_time_estimate();
-	start_monitor_thread();
+	make_schedule();
 
-	/* Create the buddhabrot */
-	make_buddhabrot();
+	/* Create the buddhabrot (multi-threaded) */
+	if(num_threads == 1 || MULTITHREADED == 0) {
+		make_buddhabrot(NULL);
+	} else {
+		int thread_no;
+		for(thread_no = 0; thread_no < num_threads; thread_no++) {
+			create_buddhabrot_thread(thread_no);
+		}
+		//join_all_threads();
+	}
+
+	start_monitor_thread();
+	post_processing();
 	write_buddhabrot();
 
 	printf("Finished.\n");
-	finished = 1;
+	finished = 1; /* Stops monitor thread. */
+ 
+	free(threads);
+	free(thread_data_set);
+	/* todo: free the point sets. But heap is destroyed anyway. */
+
 	return 0;
 }
 

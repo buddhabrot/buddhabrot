@@ -7,7 +7,7 @@ buddhabrot: out build debug
 	gcc -o  build/buddhabrot -O3 main.c ${LIB} ${OPT}
 	gcc -o  debug/buddhabrot main.c -g -pg ${LIB} ${OPT} 
 	gcc -o  build/basic -O3 basic.c ${LIB} ${OPT}
-	time ./build/basic 1024 1024 /tmp 128
+	time ./build/basic 256 256 /tmp 128
 
 out: 
 	mkdir out
