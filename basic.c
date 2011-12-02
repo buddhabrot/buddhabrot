@@ -11,8 +11,8 @@
 #include <math.h>
 #include <time.h>
 #include <pthread.h>
-
-#include "gd.h"
+ 
+#include "gd.h" 
 
 /* malloc helper */
 void * malloc_p(unsigned int);
