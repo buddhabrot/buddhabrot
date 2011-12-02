@@ -21,13 +21,15 @@
 #include <pthread.h>
 #include <math.h>
 #include <assert.h>
-
 #include "gd.h"
+
+#include "cpu_info.h"
 
 #define MAX_DISTANCE 4.0
 #define NUM_DIMENSIONS 1
 
-#define NUM_THREADS 1
+int NUM_THREADS = 1;
+
 #define true  1
 #define false 0
 
@@ -45,8 +47,8 @@ struct thread_data {
 	bb_bool ** co_set;
 	bb_pixel *** buddha_arr;
 };
-struct thread_data thread_data_array[NUM_THREADS];
-struct thread_data thread_data_comandel_array[NUM_THREADS];
+struct thread_data thread_data_array[64];
+struct thread_data thread_data_comandel_array[64];
 
 int generateBuddhabrot(int, int);
 void * generateBuddhaSegment(void *);
@@ -61,6 +63,10 @@ void updateBuddhabrot(int cutoff, int n, int resolution,  double x,  double y, d
 int 
 main (int argc, char * const argv[]) {
 	printf("** Started generating buddhabrot in multi-threaded segments.. this will take a shitload of time\n");
+
+    NUM_THREADS = get_num_cores();
+    if(NUM_THREADS > 64)
+        NUM_THREADS = 64;
 
 	int resolution, cutoff;
 	if(argc != 3) {

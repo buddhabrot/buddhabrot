@@ -1,3 +1,5 @@
+INCLUDES=-I$(GD_INCLUDEDIR)
+LIBS=-I$(GD_LIBDIR)
 LIB=-lgd -lpng -lpthread
 OPT=-ffast-math -Wall -Wno-implicit-function-declaration
 
