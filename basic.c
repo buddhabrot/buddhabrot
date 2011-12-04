@@ -128,22 +128,19 @@ void process_buddhabrot(double x, double y) {
 	double nx, ny;
 	double ox, oy;
 	int col, row;
-	int ocol, orow;
 
 	ox = x;
 	oy = y;
-	ocol = (x + 2.0) * size;
-	orow = (y + 1.0) * size;
 
 	while(n < depth) {
 
 		nx = ox*ox - oy*oy + x;
 		ny = 2*ox*oy + y;
 
-		col = (nx + 2.0) * size;
-		row = (ny + 1.0) * size;
+		if(nx >= -2 && ny >= -1 && nx < 1 && ny < 1 ) {
+			col = (nx + 2) * size;
+			row = (ny + 1) * size;
 
-		if(col >= 0.0 && row >= 0.0 && col < width && row < height) {
 			pthread_mutex_lock(&mutexes[col][row]);
 			buddhabrot[col][row] ++;
 			pthread_mutex_unlock(&mutexes[col][row]);
@@ -151,8 +148,6 @@ void process_buddhabrot(double x, double y) {
 
 		ox = nx;
 		oy = ny;
-		ocol = col;
-		orow = row;
 		n++;
 	}
 }
@@ -262,15 +257,16 @@ void write_buddhabrot() {
 	image = gdImageCreateTrueColor(height, width);
 
 	int color;
-	int intensity = 0;
+	double intensity = 0.0;
 
 	if(amplitude > 0) {
 		for(col=0; col<width; col++) {
 			for(row=0; row<height; row++) {
 				char idx = (char) buddhabrot[col][row];
 				
-				intensity = (255 * idx) / amplitude;
-				color = gdTrueColor(intensity, intensity, intensity);
+				intensity = (double) idx / (double) amplitude;
+				intensity *= 255 * intensity; /* squared, and capped to 0, 255 */
+				color = gdTrueColor((int) intensity, (int) intensity, (int) intensity);
 				gdImageSetPixel(image, row, col, color);
 			}
 		}
