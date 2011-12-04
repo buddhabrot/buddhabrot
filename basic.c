@@ -134,7 +134,7 @@ void process_buddhabrot(double x, double y) {
 
 	while(n < depth) {
 
-		nx = ox*ox - oy*oy + x;
+		nx = (ox+oy)*(ox-oy) + x;
 		ny = 2*ox*oy + y;
 
 		if(nx >= -2 && ny >= -1 && nx < 1 && ny < 1 ) {
@@ -264,8 +264,8 @@ void write_buddhabrot() {
 			for(row=0; row<height; row++) {
 				char idx = (char) buddhabrot[col][row];
 				
-				intensity = (double) idx / (double) amplitude;
-				intensity *= 255 * intensity; /* squared, and capped to 0, 255 */
+				intensity = sqrt((double) idx / (double) amplitude);
+				intensity *= 255; /* squared, and capped to 0, 255 */
 				color = gdTrueColor((int) intensity, (int) intensity, (int) intensity);
 				gdImageSetPixel(image, row, col, color);
 			}
@@ -302,6 +302,12 @@ void * monitor_loop(void* data) {
 
 	int completeness;
 	int thread_no;
+	int seconds;
+
+	if(depth > 10000)
+		seconds = 600;
+	else
+		seconds = 2;
 
 	while(!finished) {	
 		finished = 1;
@@ -313,7 +319,8 @@ void * monitor_loop(void* data) {
 		}
 		completeness /= total_points;
 		printf("%.2d%% complete..\n", completeness);
-		sleep(1);
+
+		sleep(seconds);
 	}
 
 	return NULL;
