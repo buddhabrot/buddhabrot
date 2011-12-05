@@ -17,7 +17,8 @@
 
 #include "cpu_info.h"
 
-#define MULTITHREADED 1 /* Currently code may not behave too well if you turn this off - to be tested. */
+#define THREAD_SAFE_MODE 0 /* See note where this is used. */
+
 /* malloc helper */
 void * malloc_p(unsigned int);
 
@@ -110,6 +111,7 @@ char is_mandelbrot_point(double x, double y) {
 
 /* Calculate the mandelbrot for given depth. */
 void make_mandelbrot() {
+
 	int row, col;
 	double x, y;
 
@@ -124,6 +126,7 @@ void make_mandelbrot() {
 }
 
 void process_buddhabrot(double x, double y) {
+
 	int n = 0;
 	double nx, ny;
 	double ox, oy;
@@ -141,9 +144,18 @@ void process_buddhabrot(double x, double y) {
 			col = (nx + 2) * size;
 			row = (ny + 1) * size;
 
+            #if THREAD_SAFE_MODE==1
 			pthread_mutex_lock(&mutexes[col][row]);
-			buddhabrot[col][row] ++;
+            #endif
+			buddhabrot[col][row] ++; 
+			/* Thread unsafety warners: hear hear!
+			 * While this is not atomic, there is little chance that all threads will visit the
+			 * same point at once. And if it happens, the net effect is too small to warrant 
+			 * mutex locking around each point.  Therefore, by default, THREAD_SAFE_MODE 
+			 * is off. */
+            #if THREAD_SAFE_MODE==1
 			pthread_mutex_unlock(&mutexes[col][row]);
+            #endif
 		}
 
 		ox = nx;
@@ -167,6 +179,7 @@ void post_processing() {
 }
 
 void* make_buddhabrot(void * data) {
+
 	int row, col;
 	double x, y;
 	int startpoint;
@@ -247,6 +260,7 @@ void write_mandelbrot() {
 }
 
 void write_buddhabrot() {
+
 	int row, col;
 	gdImagePtr image;
 	FILE* file;
@@ -284,8 +298,9 @@ void write_buddhabrot() {
 
 void allocate_sets() {
 
-	printf("%s\n", __FUNCTION__);
 	int col;
+
+	printf("%s\n", __FUNCTION__);
 
 	mandelbrot = (char**) malloc_p(width * sizeof(char*));
 	buddhabrot = (int**) malloc_p(width * sizeof(int*));
@@ -300,7 +315,7 @@ void allocate_sets() {
 
 void * monitor_loop(void* data) {
 
-	int completeness;
+	int progress;
 	int thread_no;
 	int seconds;
 
@@ -312,13 +327,13 @@ void * monitor_loop(void* data) {
 	while(!finished) {	
 		finished = 1;
 
-		completeness = 0;
+		progress = 0;
 		for(thread_no=0; thread_no<num_threads; thread_no++) {
 			finished &= thread_data_set[thread_no].finished;
-			completeness += 100 * thread_data_set[thread_no].points_processed;
+			progress += 100 * thread_data_set[thread_no].points_processed;
 		}
-		completeness /= total_points;
-		printf("%.2d%% complete..\n", completeness);
+		progress /= total_points;
+		printf("%.2d%% complete..\n", progress);
 
 		sleep(seconds);
 	}
@@ -361,50 +376,52 @@ void make_schedule() {
 	}
 
 	num_threads = get_num_cores(); /* Thread per core. */
-	if(MULTITHREADED) {
-		points_per_thread = anti_mandelbrot_size / num_threads;
-		thread_data_set = (struct thread_data*) 
-			malloc_p(sizeof(struct thread_data) * num_threads);
-		threads = (pthread_t*) malloc(sizeof(pthread_t) * num_threads);
+    points_per_thread = anti_mandelbrot_size / num_threads;
+    thread_data_set = (struct thread_data*) 
+        malloc_p(sizeof(struct thread_data) * num_threads);
+    threads = (pthread_t*) malloc(sizeof(pthread_t) * num_threads);
 
-		/* Give a slice of the mandelbrot point area to each thread. */
-		int points = 0;
-		int thread_no = 0;
-		int i = 0;
-		for(col=0; col<width; col++) {
-			for(row=0; row<height; row++, i++) {
-				if(mandelbrot[col][row])
-					continue;
+    /* Give a slice of the mandelbrot point area to each thread. */
+    int points = 0;
+    int thread_no = 0;
+    int i = 0;
+    for(col=0; col<width; col++) {
+        for(row=0; row<height; row++, i++) {
+            if(mandelbrot[col][row])
+                continue;
 
-				if(points%points_per_thread == 0) {
-					if(thread_no < num_threads) {
-						thread_data_set[thread_no].id = thread_no;
-						thread_data_set[thread_no].startpoint = i;
-						thread_data_set[thread_no].points_to_process = points_per_thread;
-						thread_no++;
-					}
-				}
-				points ++;
-			}
-		}
+            if(points%points_per_thread == 0) {
+                if(thread_no < num_threads) {
+                    thread_data_set[thread_no].id = thread_no;
+                    thread_data_set[thread_no].startpoint = i;
+                    thread_data_set[thread_no].points_to_process = points_per_thread;
+                    thread_no++;
+                }
+            }
+            points ++;
+        }
+    }
 
-		/* Pad the last thread so it finishes up. */
-		thread_data_set[num_threads - 1].points_to_process += anti_mandelbrot_size % num_threads;
-	}
+    /* Pad the last thread so it finishes up. */
+    thread_data_set[num_threads - 1].points_to_process += anti_mandelbrot_size % num_threads;
 
 	/* Allocate and initialize the mutexes. */
+    #if THREAD_SAFE_MODE
 	mutexes = (pthread_mutex_t**) malloc(sizeof(pthread_mutex_t*) * width);
 	for(col=0; col<width; col++)
 		mutexes[col] = (pthread_mutex_t*) malloc(sizeof(pthread_mutex_t) * height);
 	for(col=0; col<width; col++)
 		for(row=0; row<height; row++)
 			pthread_mutex_init(&mutexes[col][row], NULL);
+    #endif
 
+    /* Store total results size for monitoring progress. */
 	total_points = anti_mandelbrot_size;
 
 }
 
 void create_buddhabrot_thread(int thread_no) {
+
 	int error;
 	pthread_attr_t attr;
 
@@ -426,6 +443,7 @@ void create_buddhabrot_thread(int thread_no) {
 
 
 int main(int argc, char* argv[]) {
+
 	assert(argc >= 4);
 
 	size = atoi(argv[1]);
@@ -457,14 +475,10 @@ int main(int argc, char* argv[]) {
 	make_schedule();
 
 	/* Create the buddhabrot (multi-threaded) */
-	if(MULTITHREADED == 0) {
-		make_buddhabrot(NULL);
-	} else {
-		int thread_no;
-		for(thread_no = 0; thread_no < num_threads; thread_no++) {
-			create_buddhabrot_thread(thread_no);
-		}
-	}
+    int thread_no;
+    for(thread_no = 0; thread_no < num_threads; thread_no++) {
+        create_buddhabrot_thread(thread_no);
+    }
 
 	wait_monitor_thread(); /* blocks current thread */
 	post_processing();
@@ -474,12 +488,18 @@ int main(int argc, char* argv[]) {
  
 	free(threads);
 	free(thread_data_set);
+
+    #if THREAD_SAFE_MODE
+    free(mutexes);
+    #endif
+
 	/* todo: free the point sets. But heap is destroyed anyway. */
 
 	return 0;
 }
 
 void* malloc_p(unsigned int size) {
+
 	void* out = calloc(size, 1);
 
 	if(out == NULL) {
