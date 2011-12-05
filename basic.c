@@ -17,7 +17,7 @@
 
 #include "cpu_info.h"
 
-#define MULTITHREADED 1
+#define MULTITHREADED 1 /* Currently code may not behave too well if you turn this off - to be tested. */
 /* malloc helper */
 void * malloc_p(unsigned int);
 
@@ -361,7 +361,7 @@ void make_schedule() {
 	}
 
 	num_threads = get_num_cores(); /* Thread per core. */
-	if(num_threads > 1 && MULTITHREADED) {
+	if(MULTITHREADED) {
 		points_per_thread = anti_mandelbrot_size / num_threads;
 		thread_data_set = (struct thread_data*) 
 			malloc_p(sizeof(struct thread_data) * num_threads);
@@ -457,7 +457,7 @@ int main(int argc, char* argv[]) {
 	make_schedule();
 
 	/* Create the buddhabrot (multi-threaded) */
-	if(num_threads == 1 || MULTITHREADED == 0) {
+	if(MULTITHREADED == 0) {
 		make_buddhabrot(NULL);
 	} else {
 		int thread_no;
