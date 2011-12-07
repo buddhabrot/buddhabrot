@@ -17,7 +17,8 @@
 
 #include "cpu_info.h"
 
-#define MULTITHREADED 1
+#define THREAD_SAFE_MODE 0 /* See note where this is used. */
+
 /* malloc helper */
 void * malloc_p(unsigned int);
 
@@ -42,22 +43,26 @@ int ** buddhabrot; /* Number of hits for each buddhabrot pixel */
 
 /* State-keeping */
 int amplitude = 0; /* Amplitude of the buddha: max. number of hits in one pixel. */
-long long calculations; /* Number of calculations performed for buddhabrot. */
-long long max_calculations; 
 
 /* Monitor thread */
 pthread_t monitor;
 int finished;
+int total_points;
 
 /* Multi-threading */
 int num_threads;
 struct thread_data {
 	int id;
 	int startpoint; /* Index in coordinate space where thread starts its work. */
+	int points_processed;
+	int points_to_process;
+	int finished;
 };
 int points_per_thread;
 struct thread_data* thread_data_set;
 pthread_t *threads;
+pthread_mutex_t ** mutexes;
+
 
 void make_map() {
 	/* Makes a normalized map (x = -2.0 .. 1.0, y = -1.0 .. 1.0) */
@@ -106,6 +111,7 @@ char is_mandelbrot_point(double x, double y) {
 
 /* Calculate the mandelbrot for given depth. */
 void make_mandelbrot() {
+
 	int row, col;
 	double x, y;
 
@@ -120,6 +126,7 @@ void make_mandelbrot() {
 }
 
 void process_buddhabrot(double x, double y) {
+
 	int n = 0;
 	double nx, ny;
 	double ox, oy;
@@ -127,21 +134,33 @@ void process_buddhabrot(double x, double y) {
 
 	ox = x;
 	oy = y;
+
 	while(n < depth) {
-		nx = ox*ox - oy*oy + x;
+
+		nx = (ox+oy)*(ox-oy) + x;
 		ny = 2*ox*oy + y;
 
-		col = (nx + 2.0) * size;
-		row = (ny + 1.0) * size;
+		if(nx >= -2 && ny >= -1 && nx < 1 && ny < 1 ) {
+			col = (nx + 2) * size;
+			row = (ny + 1) * size;
 
-		if(col >= 0.0 && row >= 0.0 && col < width && row < height) {
-			buddhabrot[col][row] ++;
+            #if THREAD_SAFE_MODE==1
+			pthread_mutex_lock(&mutexes[col][row]);
+            #endif
+			buddhabrot[col][row] ++; 
+			/* Thread unsafety warners: hear hear!
+			 * While this is not atomic, there is little chance that all threads will visit the
+			 * same point at once. And if it happens, the net effect is too small to warrant 
+			 * mutex locking around each point.  Therefore, by default, THREAD_SAFE_MODE 
+			 * is off. */
+            #if THREAD_SAFE_MODE==1
+			pthread_mutex_unlock(&mutexes[col][row]);
+            #endif
 		}
 
 		ox = nx;
 		oy = ny;
 		n++;
-		calculations++;
 	}
 }
 
@@ -160,35 +179,48 @@ void post_processing() {
 }
 
 void* make_buddhabrot(void * data) {
+
 	int row, col;
 	double x, y;
-	int points_processed = 0;
 	int startpoint;
 	int id;
 
 	struct thread_data* thread_data = (struct thread_data*) data;
-
 	id = thread_data->id;
 	startpoint = thread_data->startpoint;
 
 	printf("Starting thread %d at index %d.\n", id, startpoint);
 
+	thread_data->points_processed = 0;
+
+	int i = 0;
 	for(col=0; col<width; col++) {
-		for(row=0; row<height; row++) {
-			if(mandelbrot[col][row] || (col < startpoint%width && row<startpoint/width))
+		for(row=0; row<height; row++, i++) {
+			if(i < startpoint)
+				continue;
+
+			if(mandelbrot[col][row])
 				continue;
 
 			x = map[col][row].x;
 			y = map[col][row].y;
 
 			process_buddhabrot(x, y);
-			points_processed ++;
+			thread_data->points_processed ++;
 
-			if(points_processed > points_per_thread && id<(num_threads-1)) /* Let the last thread finish up. */
-				return NULL;
+			if(thread_data->points_processed == thread_data->points_to_process) {
+				thread_data->finished = 1;
+				break;
+			}
 			
 		}
+
+		if(thread_data->finished)
+			break;
 	}
+
+	/* Thread is finished. */
+	thread_data->finished = 1;
 
 	return NULL;
 }
@@ -228,6 +260,7 @@ void write_mandelbrot() {
 }
 
 void write_buddhabrot() {
+
 	int row, col;
 	gdImagePtr image;
 	FILE* file;
@@ -238,15 +271,16 @@ void write_buddhabrot() {
 	image = gdImageCreateTrueColor(height, width);
 
 	int color;
-	int intensity = 0;
+	double intensity = 0.0;
 
 	if(amplitude > 0) {
 		for(col=0; col<width; col++) {
 			for(row=0; row<height; row++) {
 				char idx = (char) buddhabrot[col][row];
 				
-				intensity = (255 * idx) / amplitude;
-				color = gdTrueColor(intensity, intensity, intensity);
+				intensity = sqrt((double) idx / (double) amplitude);
+				intensity *= 255; /* squared, and capped to 0, 255 */
+				color = gdTrueColor((int) intensity, (int) intensity, (int) intensity);
 				gdImageSetPixel(image, row, col, color);
 			}
 		}
@@ -264,8 +298,9 @@ void write_buddhabrot() {
 
 void allocate_sets() {
 
-	printf("%s\n", __FUNCTION__);
 	int col;
+
+	printf("%s\n", __FUNCTION__);
 
 	mandelbrot = (char**) malloc_p(width * sizeof(char*));
 	buddhabrot = (int**) malloc_p(width * sizeof(int*));
@@ -280,20 +315,33 @@ void allocate_sets() {
 
 void * monitor_loop(void* data) {
 
-	int completeness;
+	int progress;
+	int thread_no;
+	int seconds;
 
-	assert(max_calculations > 0);
-	while(!finished) {
-		sleep(1);
-		completeness = 100 * calculations / max_calculations;
-		printf("%.2d%% complete..\n", completeness);
-		
+	if(depth > 10000)
+		seconds = 600;
+	else
+		seconds = 2;
+
+	while(!finished) {	
+		finished = 1;
+
+		progress = 0;
+		for(thread_no=0; thread_no<num_threads; thread_no++) {
+			finished &= thread_data_set[thread_no].finished;
+			progress += 100 * thread_data_set[thread_no].points_processed;
+		}
+		progress /= total_points;
+		printf("%.2d%% complete..\n", progress);
+
+		sleep(seconds);
 	}
 
 	return NULL;
 }
 
-void start_monitor_thread() {
+void wait_monitor_thread() {
 	
 	int error;
 	void* status;
@@ -308,8 +356,8 @@ void start_monitor_thread() {
 	assert(!error);
 
 	pthread_attr_destroy(&attr);
-	pthread_join(monitor, &status);
-	assert(!status);
+	error = pthread_join(monitor, &status);
+	assert(!error);
 
 }
 
@@ -327,34 +375,53 @@ void make_schedule() {
 		}
 	}
 
-	num_threads = 1 + get_num_cores(); /* Thread per core. */
-	if(num_threads > 1 && MULTITHREADED) {
-		points_per_thread = anti_mandelbrot_size / num_threads;
-		thread_data_set = (struct thread_data*) 
-			malloc_p(sizeof(struct thread_data) * num_threads);
-		threads =(pthread_t*) malloc(sizeof(pthread_t) * num_threads);
+	num_threads = get_num_cores(); /* Thread per core. */
+    points_per_thread = anti_mandelbrot_size / num_threads;
+    thread_data_set = (struct thread_data*) 
+        malloc_p(sizeof(struct thread_data) * num_threads);
+    threads = (pthread_t*) malloc(sizeof(pthread_t) * num_threads);
 
-		/* Slice the mandelbrot point area for each thread. */
-		int points = 0;
-		int thread_no = 0;
-		for(col=0; col<width; col++) {
-			for(row=0; row<height; row++) {
-				if(points%points_per_thread == 0) {
-					if(thread_no < num_threads) {
-						thread_data_set[thread_no].id = thread_no;
-						thread_data_set[thread_no].startpoint = col + row*width;
-						thread_no++;
-					}
-				}
-				points ++;
-			}
-		}
-	}
+    /* Give a slice of the mandelbrot point area to each thread. */
+    int points = 0;
+    int thread_no = 0;
+    int i = 0;
+    for(col=0; col<width; col++) {
+        for(row=0; row<height; row++, i++) {
+            if(mandelbrot[col][row])
+                continue;
 
-	max_calculations = anti_mandelbrot_size * depth;
+            if(points%points_per_thread == 0) {
+                if(thread_no < num_threads) {
+                    thread_data_set[thread_no].id = thread_no;
+                    thread_data_set[thread_no].startpoint = i;
+                    thread_data_set[thread_no].points_to_process = points_per_thread;
+                    thread_no++;
+                }
+            }
+            points ++;
+        }
+    }
+
+    /* Pad the last thread so it finishes up. */
+    thread_data_set[num_threads - 1].points_to_process += anti_mandelbrot_size % num_threads;
+
+	/* Allocate and initialize the mutexes. */
+    #if THREAD_SAFE_MODE
+	mutexes = (pthread_mutex_t**) malloc(sizeof(pthread_mutex_t*) * width);
+	for(col=0; col<width; col++)
+		mutexes[col] = (pthread_mutex_t*) malloc(sizeof(pthread_mutex_t) * height);
+	for(col=0; col<width; col++)
+		for(row=0; row<height; row++)
+			pthread_mutex_init(&mutexes[col][row], NULL);
+    #endif
+
+    /* Store total results size for monitoring progress. */
+	total_points = anti_mandelbrot_size;
+
 }
 
 void create_buddhabrot_thread(int thread_no) {
+
 	int error;
 	pthread_attr_t attr;
 
@@ -364,6 +431,9 @@ void create_buddhabrot_thread(int thread_no) {
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
+	thread_data_set[thread_no].finished = 0;
+	thread_data_set[thread_no].points_processed = 0;
+
 	error = pthread_create(&threads[thread_no], &attr, make_buddhabrot, 
 		(void*) &thread_data_set[thread_no]);
 	assert(!error);
@@ -371,19 +441,9 @@ void create_buddhabrot_thread(int thread_no) {
 	pthread_attr_destroy(&attr);	
 }
 
-void join_all_threads() {
-
-	int thread_no;
-	int error;
-	void* status;
-
-	for(thread_no=0; thread_no<num_threads; thread_no++) {
-		error = pthread_join(threads[thread_no], &status);
-		assert(error);
-	}
-}
 
 int main(int argc, char* argv[]) {
+
 	assert(argc >= 4);
 
 	size = atoi(argv[1]);
@@ -415,31 +475,31 @@ int main(int argc, char* argv[]) {
 	make_schedule();
 
 	/* Create the buddhabrot (multi-threaded) */
-	if(num_threads == 1 || MULTITHREADED == 0) {
-		make_buddhabrot(NULL);
-	} else {
-		int thread_no;
-		for(thread_no = 0; thread_no < num_threads; thread_no++) {
-			create_buddhabrot_thread(thread_no);
-		}
-		//join_all_threads();
-	}
+    int thread_no;
+    for(thread_no = 0; thread_no < num_threads; thread_no++) {
+        create_buddhabrot_thread(thread_no);
+    }
 
-	start_monitor_thread();
+	wait_monitor_thread(); /* blocks current thread */
 	post_processing();
 	write_buddhabrot();
 
 	printf("Finished.\n");
-	finished = 1; /* Stops monitor thread. */
  
 	free(threads);
 	free(thread_data_set);
+
+    #if THREAD_SAFE_MODE
+    free(mutexes);
+    #endif
+
 	/* todo: free the point sets. But heap is destroyed anyway. */
 
 	return 0;
 }
 
 void* malloc_p(unsigned int size) {
+
 	void* out = calloc(size, 1);
 
 	if(out == NULL) {
