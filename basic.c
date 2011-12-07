@@ -81,7 +81,7 @@ char is_mandelbrot_point(double x, double y) {
 	a = (x-0.25)*(x-0.25) + y*y;
 	p = sqrt(a);
 	
-	/* premature exit: center of mandelbrot */
+	/* premature exit: the center "holes" of mandelbrot */
 	if(x < p - 2*p*p + 0.25 || (x + 1) * (x + 1) + y * y < 1.0 / 16.0) {
 		return 1;
 	}
