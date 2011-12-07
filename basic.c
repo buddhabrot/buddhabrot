@@ -18,7 +18,6 @@
 #include "cpu_info.h"
 
 #define THREAD_SAFE_MODE 0 /* See note where this is used. */
-
 /* malloc helper */
 void * malloc_p(unsigned int);
 
@@ -140,9 +139,9 @@ void process_buddhabrot(double x, double y) {
 		nx = (ox+oy)*(ox-oy) + x;
 		ny = 2*ox*oy + y;
 
-		if(nx >= -2 && ny >= -1 && nx < 1 && ny < 1 ) {
-			col = (nx + 2) * size;
-			row = (ny + 1) * size;
+		if(nx >= -2 && nx < 1 && ny >= -1 && ny < 1) {
+			col = nx * size + (size << 1);
+			row = ny * size + size;
 
             #if THREAD_SAFE_MODE==1
 			pthread_mutex_lock(&mutexes[col][row]);
