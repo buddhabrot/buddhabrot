@@ -1,5 +1,4 @@
 #include <ostream>
-#include <math.h>
 
 bool is_mandelbrot_point(double x, double y, double depth)
 {
@@ -25,7 +24,7 @@ bool is_mandelbrot_point(double x, double y, double depth)
 		ny = 2*ox*oy + y;
 		dst = nx*nx + ny*ny;
         
-		if(dst > 4.0)
+		if(dst > mandelbrot_escape_distance)
 			return 0; /* point escaped */
         
 		ox = nx;

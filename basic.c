@@ -76,7 +76,7 @@ void make_map() {
 }
 
 char is_mandelbrot_point(double x, double y) {
-
+    
 	int n = 0;
 	double nx, ny; /* next iteration */
 	double ox, oy; /* previous iteration, or (0.0, 0.0) */

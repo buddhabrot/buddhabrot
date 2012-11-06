@@ -2,14 +2,12 @@
 #include <iostream>
 #include <unistd.h>
 
-using namespace std;
-
 struct BrotOptions
 {
-    int w;
-    int h;
-    int m;
-    int d;
+    int w,
+    int h,
+    int m,
+    int d
 };
 
 const struct BrotOptions DEFAULT_OPTIONS = { 
@@ -57,8 +55,7 @@ const struct BrotOptions parse_options(int argc, char* argv[])
 
 int main(int argc, char* argv[])
 {
-    struct BrotOptions options = parse_options(argc, argv); // may cause exit
-    
-    cout << "Running buddhabrot.." << endl;
+    Options options = parse_options(argc, argv); // may cause exit
+
 }
 
