@@ -2,3 +2,7 @@
 build
 debug
 out
+hpalib
+CImg.h
+brot
+out.png

@@ -1,19 +1,14 @@
 #include <string>
 #include <iostream>
 #include <unistd.h>
+#include <sys/mman.h>
+
+#include "brot.h"
 
 using namespace std;
 
-struct BrotOptions
-{
-    int w;
-    int h;
-    int m;
-    int d;
-};
-
-const struct BrotOptions DEFAULT_OPTIONS = { 
-    256, 256, 64, 64
+const BrotOptions DEFAULT_OPTIONS = { 
+    256 /* w */, 256 /* h */, 64 /* m */, 64 /* d */
 };
 
 void display_usage()
@@ -25,12 +20,12 @@ void display_usage()
     cout << "height: height of buddhabrot in pixels" << endl;
 }
 
-const struct BrotOptions parse_options(int argc, char* argv[])
+const BrotOptions parse_options(int argc, char* argv[])
 {
-    struct BrotOptions options = DEFAULT_OPTIONS;
+    BrotOptions options = DEFAULT_OPTIONS;
     int opt;
 
-    while((opt = getopt(argc, argv, "d:w:h:")) != -1)
+    while((opt = getopt(argc, argv, "d:m:w:h:")) != -1)
     {
         switch(opt)
         {
@@ -48,6 +43,7 @@ const struct BrotOptions parse_options(int argc, char* argv[])
                 break;
             case '?':
                 display_usage();
+                exit(1);
                 break;
         }
     }
@@ -57,8 +53,19 @@ const struct BrotOptions parse_options(int argc, char* argv[])
 
 int main(int argc, char* argv[])
 {
-    struct BrotOptions options = parse_options(argc, argv); // may cause exit
+    BrotOptions options = parse_options(argc, argv); // may cause exit
     
-    cout << "Running buddhabrot.." << endl;
+    cout << "Running buddhabrot.." << endl << "width:\t\t" << options.w << endl << "height:\t\t" << options.h << endl
+        << "depth:\t\t" << options.d << endl << "m.depth:\t" << options.m << endl << endl;
+    
+    PointList *points;
+    if(!(points = anti_mandelbrot(options)))
+    {
+        cout << "Could not create a mandelbrot file. Exiting." << endl;
+        exit(1);
+    }
+    
+    string debug = "out.png";
+    visualize_mandelbrot(points, debug, options);
 }
 

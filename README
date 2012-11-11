@@ -7,3 +7,10 @@ Calculates a buddhabrot fractal with size {size} in pixels, with iterative depth
 Optionally, you can specify a factor {mandelbrot_factor}, which will multiply the iterative depth for calculating the mandelbrot fractal. This way you can have a more detailed mandelbrot to use as a basis to calculate your buddhabrot (this is advised, since mandelbrot creation is pretty cheap).
 
 Needed for image creation are libpng and libgd (any version will do). I'll make a standalone image writer someday, or you can add your own.
+
+# Dependencies #
+
+hpalib (http://www.nongnu.org/hpalib/)
+Note that if you build hpalib, it should use the same XDIM settings as any cache files you're using, or the values will not de/serialize correctly.
+
+For MacOSX, CImg will require X11. You will need to install from the XQuartz project if you're running 10.8 or later.
