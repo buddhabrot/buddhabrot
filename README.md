@@ -1,4 +1,6 @@
-Buddhabrot generator.
+# Buddhabrot generator.
+
+![Rendering](buddhabrot.png?raw=true "A Rendering of a buddhabrot - post-processed a little to separate the depth of iterations into R/G/B channels")
 
 Usage:
 buddhabrot size depth filepath [mandelbrot_factor]
@@ -8,7 +10,7 @@ Optionally, you can specify a factor {mandelbrot_factor}, which will multiply th
 
 Needed for image creation are libpng and libgd (any version will do). I'll make a standalone image writer someday, or you can add your own.
 
-# Dependencies #
+## Dependencies #
 
 hpalib (http://www.nongnu.org/hpalib/)
 Note that if you build hpalib, it should use the same XDIM settings as any cache files you're using, or the values will not de/serialize correctly.
