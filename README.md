@@ -2,6 +2,8 @@
 
 ![Rendering](buddhabrot.png?raw=true "A Rendering of a buddhabrot - post-processed a little to separate the depth of iterations into R/G/B channels")
 
+## Note: The above preview is being minted as an NFT by me.
+
 Usage:
 buddhabrot size depth filepath [mandelbrot_factor]
 
